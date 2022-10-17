@@ -15,7 +15,7 @@ locals {
 # this is a trust policy for AWS EKS to act on my behalf
 # defines a new identity and access management role for our EKS service and attaches a new policy called AmazonEKSClusterPolicy to it.
 # below is the rule and policies for the entire EKS cluster 
-# it gives the permission to create VMs and make netowork changes as part of kubernetes management work
+# it gives the permission to create VMs and make network changes as part of kubernetes management work
 resource "aws_iam_role" "ms-cluster" {
   name = local.cluster_name
 
@@ -37,23 +37,23 @@ resource "aws_iam_role" "ms-cluster" {
 
 
 resource "aws_iam_role_policy_attachment" "ms-cluster-AmazonEKSClusterPolicy" {
-    policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
-    role = "aws_iam_role.ms-cluster.name"
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+  role       = "aws_iam_role.ms-cluster.name"
 }
 
 # Network security policy
 # this will restrict the kind of traffic that can go into and out of the network
 
 resource "aws_security_group" "ms-cluster" {
-  name = local.cluster_name
+  name   = local.cluster_name
   vpc_id = var.vpc_id
 
-# the code below allow unrestricted outbound traffic but doesnt allow any inbound traffic because there is no ingress rule defined.
-# we hv passed our vpc to the security group.
-  egres {
-    from_port = 0
-    to_port = 0
-    protocol = "-1"
+  # the code below allow unrestricted outbound traffic but doesnt allow any inbound traffic because there is no ingress rule defined.
+  # we hv passed our vpc to the security group.
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -69,18 +69,18 @@ resource "aws_security_group" "ms-cluster" {
 # aws will create the EKS cluster and automatically setup all mangagement components we need to run our kubernetes cluster. this is called "control plane" because its the brain of our kubernetes system.
 
 resource "aws_eks_cluster" "ms-up-running" {
-  name = local.cluster_name
-  role_arn = aws_iam_role.ms-cluster.arn 
+  name     = local.cluster_name
+  role_arn = aws_iam_role.ms-cluster.arn
 
   vpc_config {
-    security_group_ids = [aws_security_group.ms-cluster_id]
-    subnet_ids = var.cluster_subnet_ids
+    security_group_ids = [aws_security_group.ms-cluster.id]
+    subnet_ids         = var.cluster_subnet_ids
   }
 
-    depends_on = [
-      aws_iam_role_policy_attachment.ms-cluster-AmazonEKSClusterPolicy
-    ]
-                                                            
+  depends_on = [
+    aws_iam_role_policy_attachment.ms-cluster-AmazonEKSClusterPolicy
+  ]
+
 }
 
 
@@ -110,48 +110,57 @@ resource "aws_iam_role" "ms-node" {
 
 # Node policy 
 # the roles and policies defined below will allow nodes to communicate with Amazon's container registries and VM services. 
+# "aws_iam_policy_attachment" "ms-node-AmazonEKSWorkerNodePolicy"
 resource "aws_iam_role_policy_attachment" "ms-node-AmazonEKSWorkerNodePolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-  role = aws_iam_role.ms-node.name 
+  role       = aws_iam_role.ms-node.name
 }
 
-resource "aws_iam_policy_attachment" "ms-node-AmazonEKS_CNI_Policy" {
+resource "aws_iam_role_policy_attachment" "ms-node-AmazonEKS_CNI_Policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
-  role = aws_iam_role.ms-node.name
+  role       = aws_iam_role.ms-node.name
 }
 
-resource "aws_iam_role_policy_attachment" "ms-node-ContainerRegistryReadOnly" {
-  policy-arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-  role = aws_iam_role.ms-node.name 
+resource "aws_iam_role_policy_attachment" "ms-node-AmazonEC2ContainerRegistryReadOnly" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+  role       = aws_iam_role.ms-node.name
 }
 
 # a node group need to be configured to specify the type of compute and storage resources
 # set limit on number of individual nodes or VMs that can be created automatically
 # when we run this, it will instantiate a running kubernete cluster on AWS EKS service 
 resource "aws_eks_node_group" "ms-node-group" {
-  cluster_name = aws_eks_cluster.ms-up-running.name 
+  cluster_name    = aws_eks_cluster.ms-up-running.name
   node_group_name = "microservices"
-  node_role_arn = aws_iam_role.ms-node.arn 
-  subnet_ids = var.nodegroup_subnet_ids
+  node_role_arn   = aws_iam_role.ms-node.arn
+  subnet_ids      = var.nodegroup_subnet_ids
 
   scaling_config {
     desired_size = var.nodegroup_desired_size
-    max_size = var.nodegroup_max_size
-    min_size = var.nodegroup_min_size
+    max_size     = var.nodegroup_max_size
+    min_size     = var.nodegroup_min_size
   }
 
-    disk_size = var.nodegroup_disk_size
-    instance_types = var.nodegroup_instance_types
+  disk_size      = var.nodegroup_disk_size
+  instance_types = var.nodegroup_instance_types
 
-    depends_on = [
-      aws_iam_policy_attachment.ms-node-AmazonEKSWorkerNodePolicy,
-      aws_iam_policy_attachment.ms-node-AmazonEKS_CNI_Policy,
-      aws_iam_policy_attachment.ms-node-AmazonEC2ContainerRegistryReadOnly
-    ]
+  depends_on = [
+    aws_iam_role_policy_attachment.ms-node-AmazonEKSWorkerNodePolicy,
+    aws_iam_role_policy_attachment.ms-node-AmazonEKS_CNI_Policy,
+    aws_iam_role_policy_attachment.ms-node-AmazonEC2ContainerRegistryReadOnly
+  ]
 
 }
 
 # create a kubeconfig file based on the cluster that has been created
+# when we run this file, it will create a kubernetes cluster on AWS EKS service 
+# the output module will return the values needed to connect to the node group once its running.
+# its useful to provide the connection details in a configuration file for kubectl CLI that most operators use for kubernetes management
+# we will use this file to connect to the cluster
+# we will use special terraform resource called "local_file" to create a file named kubeconfig
+# this file will contain the connection parameters for our kubernetes cluster. YAML file
+# the values are from the EKS resources defined earlier
+# when we run our pipeline, we will need this file to conect to our cluster from my machine.
 resource "local_file" "kubeconfig" {
   content  = <<KUBECONFIG
 apiVersion: v1
